@@ -1,9 +1,8 @@
 from datetime import datetime, timedelta
+from playwright.sync_api import sync_playwright
+from icalendar import Calendar, Event
 import hashlib
 
-import requests
-from bs4 import BeautifulSoup
-from icalendar import Calendar, Event
 
 URL = "https://www.flashscore.pl/druzyna/legia-warszawa/hhbcCAY7/"
 
@@ -20,72 +19,74 @@ def create_calendar():
     return cal
 
 
-def add_match_event(cal, summary, start_dt, uid):
+def add_event(cal, summary):
     event = Event()
 
-    event.add("uid", uid)
-    event.add("dtstart", start_dt)
-    event.add("summary", summary)
+    event.add(
+        "dtstart",
+        datetime.now() + timedelta(days=1)
+    )
+
+    event.add(
+        "uid",
+        make_uid(summary)
+    )
+
+    event.add(
+        "summary",
+        summary
+    )
 
     cal.add_component(event)
 
 
 def main():
 
-    print("START")
+    print("START PLAYWRIGHT")
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/141.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8",
-        "Referer": "https://www.google.com/",
-    }
+    with sync_playwright() as p:
 
-    response = requests.get(
-        URL,
-        headers=headers,
-        timeout=30
-    )
+        browser = p.chromium.launch(
+            headless=True
+        )
 
-    print("STATUS:", response.status_code)
-    print("DLUGOSC STRONY:", len(response.text))
+        page = browser.new_page()
 
-    if response.status_code != 200:
-        print(f"BLAD HTTP: {response.status_code}")
-        return
+        page.goto(
+            URL,
+            wait_until="networkidle",
+            timeout=60000
+        )
 
-    print("POBRANO STRONE")
+        page.wait_for_timeout(10000)
 
-    with open("page.html", "w", encoding="utf-8") as f:
-        f.write(response.text)
+        html = page.content()
 
-    print("ZAPISANO page.html")
+        print("DLUGOSC HTML:", len(html))
 
-    soup = BeautifulSoup(response.text, "lxml")
+        with open(
+            "rendered.html",
+            "w",
+            encoding="utf-8"
+        ) as f:
+            f.write(html)
 
-    print("TYTUL STRONY:")
-    print(soup.title.text if soup.title else "Brak tytulu")
+        cal = create_calendar()
 
-    cal = create_calendar()
+        add_event(
+            cal,
+            "TEST PLAYWRIGHT"
+        )
 
-    test_date = datetime.now() + timedelta(days=1)
+        with open(
+            "legia-ladies.ics",
+            "wb"
+        ) as f:
+            f.write(cal.to_ical())
 
-    add_match_event(
-        cal=cal,
-        summary="TEST - Legia Ladies",
-        start_dt=test_date,
-        uid=make_uid("TEST")
-    )
+        browser.close()
 
-    with open("legia-ladies.ics", "wb") as f:
-        f.write(cal.to_ical())
-
-    print("ZAPISANO legia-ladies.ics")
-    print("KONIEC SKRYPTU")
+    print("KONIEC")
 
 
 if __name__ == "__main__":
