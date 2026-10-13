@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from icalendar import Calendar, Event
 
-URL = "https://regiowyniki.pl/druzyna/Pilka_Nozna/Polska/Legia_Ladies__k_/"
+URL = "https://www.flashscore.pl/druzyna/legia-warszawa/hhbcCAY7/"
 
 MONTHS = {
     "sty": 1,
