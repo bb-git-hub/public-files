@@ -98,12 +98,21 @@ def create_summary(home, away, score=None):
 
 def main():
 
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/141.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8",
+        "Referer": "https://www.google.com/",
+    }
+
     response = requests.get(
         URL,
-        timeout=30,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
+        headers=headers,
+        timeout=30
     )
 
     response.raise_for_status()
