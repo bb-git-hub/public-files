@@ -25,7 +25,7 @@ jobs:
 
       - name: Generowanie ICS
         run: |
-          python legia_ladies.py
+          python legia-ladies.py
 
       - name: Commit zmian
         run: |
