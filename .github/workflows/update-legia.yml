@@ -1,0 +1,40 @@
+name: Update Legia Ladies Calendar
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 5 * * *"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pobranie repozytorium
+        uses: actions/checkout@v4
+
+      - name: Instalacja Pythona
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalacja bibliotek
+        run: |
+          pip install -r requirements.txt
+
+      - name: Generowanie ICS
+        run: |
+          python legia_ladies.py
+
+      - name: Commit zmian
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add legia-ladies.ics
+
+          git diff --staged --quiet || (
+            git commit -m "Aktualizacja kalendarza Legia Ladies"
+            git push
+          )
