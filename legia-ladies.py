@@ -10,15 +10,49 @@ URL = "https://www.flashscore.pl/druzyna/legia-warszawa/hhbcCAY7/"
 
 
 def make_uid(value):
-    return hashlib.md5(value.encode("utf-8")).hexdigest()
+    return hashlib.md5(
+        value.encode("utf-8")
+    ).hexdigest()
 
 
 def create_calendar():
     cal = Calendar()
-    cal.add("prodid", "-//Legia Ladies Calendar//")
-    cal.add("version", "2.0")
-    cal.add("x-wr-calname", "Legia Ladies")
+
+    cal.add(
+        "prodid",
+        "-//Legia Ladies Calendar//"
+    )
+
+    cal.add(
+        "version",
+        "2.0"
+    )
+
+    cal.add(
+        "x-wr-calname",
+        "Legia Warszawa Kobiety"
+    )
+
     return cal
+
+
+def league_prefix(name):
+
+    if not name:
+        return "[Inne]"
+
+    lname = name.lower()
+
+    if "ekstraliga" in lname:
+        return "[Ekstraliga]"
+
+    if "puchar" in lname:
+        return "[Puchar Polski]"
+
+    if "towarzyskie" in lname:
+        return "[Sparing]"
+
+    return f"[{name}]"
 
 
 def parse_date(date_text):
@@ -39,7 +73,8 @@ def parse_date(date_text):
     hour = int(match.group(3))
     minute = int(match.group(4))
 
-    year = datetime.now().year
+    now = datetime.now()
+    year = now.year
 
     return datetime(
         year,
@@ -68,7 +103,7 @@ def main():
             timeout=60000
         )
 
-        page.wait_for_timeout(10000)
+        page.wait_for_timeout(5000)
 
         html = page.content()
 
@@ -88,17 +123,47 @@ def main():
 
     cal = create_calendar()
 
-    matches = soup.select(
-        "div.event__match"
+    events = []
+
+    current_league = "Inne"
+
+    container = soup.select_one(
+        "div.leagues--static"
     )
 
-    print("MECZE:", len(matches))
+    if not container:
+        print("Nie znaleziono sekcji meczów")
+        return
 
-    for match in matches:
+    all_elements = container.find_all(
+        ["div"],
+        recursive=True
+    )
+
+    for element in all_elements:
+
+        classes = element.get("class", [])
+
+        if "headerLeague__wrapper" in classes:
+
+            league_title = element.select_one(
+                ".headerLeague__title-text"
+            )
+
+            if league_title:
+
+                current_league = (
+                    league_title.get_text(
+                        strip=True
+                    )
+                )
+
+        if "event__match" not in classes:
+            continue
 
         try:
 
-            date_node = match.select_one(
+            date_node = element.select_one(
                 ".event__stageTime--date"
             )
 
@@ -117,7 +182,7 @@ def main():
             if not event_date:
                 continue
 
-            participants = match.select(
+            participants = element.select(
                 ".wcl-name_jjfMf"
             )
 
@@ -132,7 +197,7 @@ def main():
                 strip=True
             )
 
-            scores = match.select(
+            scores = element.select(
                 ".event__score"
             )
 
@@ -142,25 +207,42 @@ def main():
                 and scores[1].get_text(strip=True) != "-"
             )
 
+            prefix = league_prefix(
+                current_league
+            )
+
             if played:
 
+                home_score = scores[0].get_text(
+                    strip=True
+                )
+
+                away_score = scores[1].get_text(
+                    strip=True
+                )
+
                 summary = (
+                    f"{prefix} "
                     f"{home} "
-                    f"{scores[0].get_text(strip=True)}:"
-                    f"{scores[1].get_text(strip=True)} "
+                    f"{home_score}:{away_score} "
                     f"{away}"
                 )
 
             else:
 
                 summary = (
+                    f"{prefix} "
                     f"{home} - {away}"
                 )
 
             event = Event()
 
             uid = make_uid(
-                f"{event_date}-{home}-{away}"
+                (
+                    f"{event_date.isoformat()}|"
+                    f"{home}|"
+                    f"{away}"
+                )
             )
 
             event.add(
@@ -178,17 +260,35 @@ def main():
                 summary
             )
 
-            cal.add_component(
-                event
+            event.add(
+                "description",
+                current_league
+            )
+
+            events.append(
+                (
+                    event_date,
+                    event
+                )
             )
 
             print(summary)
 
         except Exception as ex:
+
             print(
-                "BLAD MECZU:",
+                "BLAD:",
                 ex
             )
+
+    events.sort(
+        key=lambda x: x[0]
+    )
+
+    for _, event in events:
+        cal.add_component(
+            event
+        )
 
     with open(
         "legia-ladies.ics",
@@ -198,7 +298,9 @@ def main():
             cal.to_ical()
         )
 
-    print("ZAPISANO ICS")
+    print(
+        f"ZAPISANO {len(events)} MECZOW"
+    )
 
 
 if __name__ == "__main__":
