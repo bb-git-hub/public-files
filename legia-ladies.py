@@ -56,9 +56,6 @@ def league_prefix(name):
 
 
 def parse_date(date_text):
-    """
-    18.10. 10:15
-    """
 
     match = re.search(
         r"(\d{2})\.(\d{2})\.\s+(\d{2}):(\d{2})",
@@ -74,7 +71,11 @@ def parse_date(date_text):
     minute = int(match.group(4))
 
     now = datetime.now()
+
     year = now.year
+
+    if month < now.month - 6:
+        year += 1
 
     return datetime(
         year,
@@ -85,9 +86,7 @@ def parse_date(date_text):
     )
 
 
-def main():
-
-    print("START")
+def fetch_html():
 
     with sync_playwright() as p:
 
@@ -116,6 +115,43 @@ def main():
 
         browser.close()
 
+        return html
+
+
+def build_summary(
+    league_name,
+    home,
+    away,
+    played,
+    home_score,
+    away_score
+):
+
+    prefix = league_prefix(
+        league_name
+    )
+
+    if played:
+
+        return (
+            f"{prefix} "
+            f"{home} "
+            f"{home_score}:{away_score} "
+            f"{away}"
+        )
+
+    return (
+        f"{prefix} "
+        f"{home} - {away}"
+    )
+
+
+def main():
+
+    print("START")
+
+    html = fetch_html()
+
     soup = BeautifulSoup(
         html,
         "html.parser"
@@ -125,161 +161,161 @@ def main():
 
     events = []
 
-    current_league = "Inne"
-
-    container = soup.select_one(
+    containers = soup.select(
         "div.leagues--static"
     )
 
-    if not container:
-        print("Nie znaleziono sekcji meczów")
-        return
-
-    all_elements = container.find_all(
-        ["div"],
-        recursive=True
+    print(
+        "SEKCJE:",
+        len(containers)
     )
 
-    for element in all_elements:
+    for container in containers:
 
-        classes = element.get("class", [])
+        current_league = "Inne"
 
-        if "headerLeague__wrapper" in classes:
+        elements = container.find_all(
+            "div",
+            recursive=True
+        )
 
-            league_title = element.select_one(
-                ".headerLeague__title-text"
+        for element in elements:
+
+            classes = element.get(
+                "class",
+                []
             )
 
-            if league_title:
+            if "headerLeague__wrapper" in classes:
 
-                current_league = (
-                    league_title.get_text(
+                league_title = element.select_one(
+                    ".headerLeague__title-text"
+                )
+
+                if league_title:
+
+                    current_league = (
+                        league_title.get_text(
+                            strip=True
+                        )
+                    )
+
+            if "event__match" not in classes:
+                continue
+
+            try:
+
+                date_node = element.select_one(
+                    ".event__stageTime--date"
+                )
+
+                if not date_node:
+                    continue
+
+                date_text = date_node.get_text(
+                    " ",
+                    strip=True
+                )
+
+                event_date = parse_date(
+                    date_text
+                )
+
+                if not event_date:
+                    continue
+
+                participants = element.select(
+                    ".wcl-name_jjfMf"
+                )
+
+                if len(participants) < 2:
+                    continue
+
+                home = participants[0].get_text(
+                    strip=True
+                )
+
+                away = participants[1].get_text(
+                    strip=True
+                )
+
+                scores = element.select(
+                    ".event__score"
+                )
+
+                played = (
+                    len(scores) >= 2
+                    and scores[0].get_text(strip=True) != "-"
+                    and scores[1].get_text(strip=True) != "-"
+                )
+
+                home_score = ""
+                away_score = ""
+
+                if played:
+
+                    home_score = scores[0].get_text(
                         strip=True
+                    )
+
+                    away_score = scores[1].get_text(
+                        strip=True
+                    )
+
+                summary = build_summary(
+                    current_league,
+                    home,
+                    away,
+                    played,
+                    home_score,
+                    away_score
+                )
+
+                uid = make_uid(
+                    (
+                        f"{event_date.isoformat()}|"
+                        f"{home}|"
+                        f"{away}"
                     )
                 )
 
-        if "event__match" not in classes:
-            continue
+                event = Event()
 
-        try:
-
-            date_node = element.select_one(
-                ".event__stageTime--date"
-            )
-
-            if not date_node:
-                continue
-
-            date_text = date_node.get_text(
-                " ",
-                strip=True
-            )
-
-            event_date = parse_date(
-                date_text
-            )
-
-            if not event_date:
-                continue
-
-            participants = element.select(
-                ".wcl-name_jjfMf"
-            )
-
-            if len(participants) < 2:
-                continue
-
-            home = participants[0].get_text(
-                strip=True
-            )
-
-            away = participants[1].get_text(
-                strip=True
-            )
-
-            scores = element.select(
-                ".event__score"
-            )
-
-            played = (
-                len(scores) >= 2
-                and scores[0].get_text(strip=True) != "-"
-                and scores[1].get_text(strip=True) != "-"
-            )
-
-            prefix = league_prefix(
-                current_league
-            )
-
-            if played:
-
-                home_score = scores[0].get_text(
-                    strip=True
+                event.add(
+                    "uid",
+                    uid
                 )
 
-                away_score = scores[1].get_text(
-                    strip=True
+                event.add(
+                    "dtstart",
+                    event_date
                 )
 
-                summary = (
-                    f"{prefix} "
-                    f"{home} "
-                    f"{home_score}:{away_score} "
-                    f"{away}"
+                event.add(
+                    "summary",
+                    summary
                 )
 
-            else:
-
-                summary = (
-                    f"{prefix} "
-                    f"{home} - {away}"
+                event.add(
+                    "description",
+                    current_league
                 )
 
-            event = Event()
-
-            uid = make_uid(
-                (
-                    f"{event_date.isoformat()}|"
-                    f"{home}|"
-                    f"{away}"
+                events.append(
+                    (
+                        event_date,
+                        event
+                    )
                 )
-            )
 
-            event.add(
-                "uid",
-                uid
-            )
+                print(summary)
 
-            event.add(
-                "dtstart",
-                event_date
-            )
+            except Exception as ex:
 
-            event.add(
-                "summary",
-                summary
-            )
-
-            event.add(
-                "description",
-                current_league
-            )
-
-            events.append(
-                (
-                    event_date,
-                    event
+                print(
+                    "BLAD MECZU:",
+                    ex
                 )
-            )
-
-            print(summary)
-
-        except Exception as ex:
-
-            print(
-                "BLAD:",
-                ex
-            )
 
     events.sort(
         key=lambda x: x[0]
